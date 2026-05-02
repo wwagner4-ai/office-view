@@ -4,17 +4,19 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import mammoth from "mammoth";
-import { randomBytes } from "node:crypto";
-
-const handleError = (error: any) => {
-  if (error instanceof Error) {
-    console.error(error.stack);
-  } else {
-    console.error("ERROR", error);
-  }
-};
+import axios from "axios";
+import FormData from "form-data";
+import * as hlp from "./helper";
 
 const actionWrapper = (fn: (...args: any[]) => Promise<any>) => {
+  const handleError = (error: any) => {
+    if (error instanceof Error) {
+      console.error(error.stack);
+    } else {
+      console.error("ERROR", error);
+    }
+  };
+
   return async (...args: any[]) => {
     try {
       await fn(...args);
@@ -24,20 +26,6 @@ const actionWrapper = (fn: (...args: any[]) => Promise<any>) => {
   };
 };
 
-function getTimestamp(): string {
-  const now = new Date();
-
-  const parts = {
-    yy: now.getFullYear().toString().slice(-2),
-    mm: (now.getMonth() + 1).toString().padStart(2, "0"),
-    dd: now.getDate().toString().padStart(2, "0"),
-    hh: now.getHours().toString().padStart(2, "0"),
-    min: now.getMinutes().toString().padStart(2, "0"),
-    ss: now.getSeconds().toString().padStart(2, "0"),
-  };
-  return `${parts.yy}${parts.mm}${parts.dd}${parts.hh}${parts.min}${parts.ss}`;
-}
-
 const program = new Command();
 
 program
@@ -46,18 +34,13 @@ program
   .version("1.0.0");
 
 program
-  .command("fetch")
-  .description("Fetch a random trivia question")
-  .action(actionWrapper(fetchTrivia));
-
-program
-  .command("process-files")
   .description("Process all files in the test-data directory")
   .action(actionWrapper(processFiles));
 
 program.parse();
 
 async function processFiles() {
+  const ts = hlp.getTimestamp();
   const homeDir = os.homedir();
   const outPath = path.join(homeDir, "tmp", "office-view", "out");
   fs.mkdirSync(outPath, { recursive: true });
@@ -75,51 +58,82 @@ async function processFiles() {
     console.log("The directory is empty.");
   } else {
     for (const file of files) {
-      await processFile(directoryPath, file, outPath);
+      await processFile(directoryPath, file, outPath, ts);
     }
   }
 }
 
-async function processFile(dir: string, fileName: string, outDir: string) {
+async function processFile(
+  dir: string,
+  fileName: string,
+  outDir: string,
+  ts: string,
+) {
   const file = path.join(dir, fileName);
   const buf = await readFile(file);
-  await createHtmlMammoth(path.parse(fileName).name, buf, outDir);
+  await createHtmlMammoth(fileName, buf, outDir, ts);
+  await createPdfGotenberg(fileName, buf, outDir, ts);
 }
 
 async function createHtmlMammoth(
-  name: string,
+  fileName: string,
   document: Buffer,
   outDir: string,
+  ts: string,
 ) {
   let content = "";
+  let label = "";
   try {
     const mamResult = await mammoth.convertToHtml({ buffer: document });
-    content = mamResult.value;
+    const name = path.parse(fileName).name;
+    const id = hlp.getId();
+    const outFile = path.join(
+      outDir,
+      `${name}-${ts}-mammoth-${id}${label}.html`,
+    );
+    writeFile(outFile, mamResult.value);
+    console.log(`mammoth SUCCESS ${outFile}`);
   } catch (error) {
-    content = `<html><body><h1>Cannot create html for '${name}'. ${error}</h1></body></html>`;
+    console.error(`mammoth ERROR ${fileName}'. ${error}`);
   }
-  const ts = getTimestamp();
-  const id = Math.random().toString(36).substring(2, 10);
-  const outFile = path.join(outDir, `${name}-${ts}-${id}.html`);
-  writeFile(outFile, content);
-  console.log(`Wrote to: ${outFile}`);
 }
 
-async function fetchTrivia() {
-  const response = await fetch("https://opentdb.com/api.php?amount=1");
-  const data = await response.json();
-  const question = data.results[0];
+async function createPdfGotenberg(
+  fileName: string,
+  docBuffer: Buffer,
+  outDir: string,
+  ts: string,
+) {
+  const gotenbergUrl = "http://localhost:3000/forms/libreoffice/convert";
 
-  console.log(`Category: ${question.category}`);
-  console.log(`Type: ${question.type}`);
-  console.log(`Difficulty: ${question.difficulty}`);
-  console.log(`Question: ${question.question}`);
+  const form = new FormData();
 
-  if (question.type === "multiple") {
-    console.log(
-      `Options: ${question.incorrect_answers.concat(question.correct_answer).join(", ")}`,
+  // WICHTIG: Der dritte Parameter { filename: '...' } ist entscheidend,
+  // damit LibreOffice die Dateiendung erkennt!
+  form.append("files", docBuffer, { filename: fileName });
+  try {
+    const response = await axios.post(gotenbergUrl, form, {
+      headers: {
+        ...form.getHeaders(),
+      },
+      responseType: "arraybuffer",
+    });
+    const name = path.parse(fileName).name;
+    const id = hlp.getId();
+    const outputPdfPath = path.join(
+      outDir,
+      `${name}-${ts}-gotenberg-${id}.pdf`,
     );
-  }
+    await writeFile(outputPdfPath, response.data);
+    console.log(`gotenberg SUCCESS ${outputPdfPath}`);
+  } catch (error) {
+    let message = "undefined";
+    if (error instanceof Error) {
+      message = error.message;
+    } else {
+      message = `${error}`;
+    }
 
-  console.log(`Answer: ${question.correct_answer}`);
+    console.error(`gotenberg ERROR ${fileName}`, message);
+  }
 }
