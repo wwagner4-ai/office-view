@@ -1,14 +1,19 @@
 import { Command } from "commander";
-import * as fs from "node:fs"
+import { readFile, writeFile } from "node:fs/promises";
+import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
+import mammoth from "mammoth";
+import { randomBytes } from "node:crypto";
 
-// Eine zentrale Funktion für alle Fehlermeldungen
 const handleError = (error: any) => {
-  console.error("❌ [CLI-Error]:", error.message || error);
-  process.exit(1); // Beendet das Programm sauber mit einem Fehlercode
+  if (error instanceof Error) {
+    console.error(error.stack);
+  } else {
+    console.error("ERROR", error);
+  }
 };
 
-// Der Wrapper
 const actionWrapper = (fn: (...args: any[]) => Promise<any>) => {
   return async (...args: any[]) => {
     try {
@@ -18,6 +23,20 @@ const actionWrapper = (fn: (...args: any[]) => Promise<any>) => {
     }
   };
 };
+
+function getTimestamp(): string {
+  const now = new Date();
+
+  const parts = {
+    yy: now.getFullYear().toString().slice(-2),
+    mm: (now.getMonth() + 1).toString().padStart(2, "0"),
+    dd: now.getDate().toString().padStart(2, "0"),
+    hh: now.getHours().toString().padStart(2, "0"),
+    min: now.getMinutes().toString().padStart(2, "0"),
+    ss: now.getSeconds().toString().padStart(2, "0"),
+  };
+  return `${parts.yy}${parts.mm}${parts.dd}${parts.hh}${parts.min}${parts.ss}`;
+}
 
 const program = new Command();
 
@@ -31,30 +50,59 @@ program
   .description("Fetch a random trivia question")
   .action(actionWrapper(fetchTrivia));
 
-
 program
-  .command("list-files")
-  .description("List all files in the test-data directory")
-  .action(actionWrapper(listFiles));
+  .command("process-files")
+  .description("Process all files in the test-data directory")
+  .action(actionWrapper(processFiles));
 
 program.parse();
 
-async function listFiles() {
-      // Prüfen, ob der Ordner existiert
-      const directoryPath = path.join(process.cwd(), "test-data");
-      if (!fs.existsSync(directoryPath)) {
-        console.error(`Error: Directory '${directoryPath}' does not exist.`);
-        return;
-      }
+async function processFiles() {
+  const homeDir = os.homedir();
+  const outPath = path.join(homeDir, "tmp", "office-view", "out");
+  fs.mkdirSync(outPath, { recursive: true });
+  //console.log(`Create out dir ${outPath}`);
 
-      const files = fs.readdirSync(directoryPath);
+  const directoryPath = path.join(process.cwd(), "test-data");
+  if (!fs.existsSync(directoryPath)) {
+    console.error(`Error: Directory '${directoryPath}' does not exist.`);
+    return;
+  }
 
-      if (files.length === 0) {
-        console.log("The directory is empty.");
-      } else {
-        console.log("Files in 'test-data':");
-        files.forEach((file) => console.log(` - ${file}`));
-      }
+  const files = fs.readdirSync(directoryPath);
+
+  if (files.length === 0) {
+    console.log("The directory is empty.");
+  } else {
+    for (const file of files) {
+      await processFile(directoryPath, file, outPath);
+    }
+  }
+}
+
+async function processFile(dir: string, fileName: string, outDir: string) {
+  const file = path.join(dir, fileName);
+  const buf = await readFile(file);
+  await createHtmlMammoth(path.parse(fileName).name, buf, outDir);
+}
+
+async function createHtmlMammoth(
+  name: string,
+  document: Buffer,
+  outDir: string,
+) {
+  let content = "";
+  try {
+    const mamResult = await mammoth.convertToHtml({ buffer: document });
+    content = mamResult.value;
+  } catch (error) {
+    content = `<html><body><h1>Cannot create html for '${name}'. ${error}</h1></body></html>`;
+  }
+  const ts = getTimestamp();
+  const id = Math.random().toString(36).substring(2, 10);
+  const outFile = path.join(outDir, `${name}-${ts}-${id}.html`);
+  writeFile(outFile, content);
+  console.log(`Wrote to: ${outFile}`);
 }
 
 async function fetchTrivia() {
