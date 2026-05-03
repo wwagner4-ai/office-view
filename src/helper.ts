@@ -1,3 +1,24 @@
+export interface Result {
+  file_name: string;
+  method: string;
+  ok: boolean;
+  message?: string;
+  time_ms?: number;
+  outFile?: string;
+}
+
+export interface RuntimeResult<T> {
+  result: T;
+  duration: number;
+}
+
+export function assertDefined<T>(val: T, message?: string): NonNullable<T> {
+  if (val === undefined || val === null) {
+    throw new Error(message ?? "Expected value to be defined");
+  }
+  return val as NonNullable<T>;
+}
+
 export function getTimestamp(): string {
   const now = new Date();
 
@@ -14,11 +35,6 @@ export function getTimestamp(): string {
 
 export function getId(): string {
   return Math.random().toString(36).substring(2, 10);
-}
-
-export interface RuntimeResult<T> {
-  result: T;
-  duration: number;
 }
 
 export async function measureRuntime<Args extends any[], Return>(
