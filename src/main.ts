@@ -3,11 +3,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import mammoth from "mammoth";
+import * as mam from "mammoth";
 import axios from "axios";
+import * as ax from "axios";
 import FormData from "form-data";
 import * as hlp from "./helper";
-import { getHeapSpaceStatistics } from "node:v8";
 
 interface Result {
   file_name: string;
@@ -90,7 +90,9 @@ async function processFile(
   const buf = await readFile(file);
   let results: Array<Result> = [];
   results.push(await createHtmlMammoth(fileName, buf, outDir, ts));
+  await hlp.sleep(500);
   results.push(await createPdfGotenberg(fileName, buf, outDir, ts));
+  await hlp.sleep(500);
   return results;
 }
 
@@ -102,20 +104,23 @@ async function createHtmlMammoth(
 ): Promise<Result> {
   let label = "";
   try {
-    const mamResult = await mammoth.convertToHtml({ buffer: document });
+    const rtResult: hlp.RuntimeResult<any> = await hlp.measureRuntime(
+      mam.convertToHtml,
+      { buffer: document },
+    );
     const name = path.parse(fileName).name;
     const id = hlp.getId();
     const outFile = path.join(
       outDir,
       `${name}-${ts}-mammoth-${id}${label}.html`,
     );
-    writeFile(outFile, mamResult.value);
+    writeFile(outFile, rtResult.result.value);
     console.log(`mammoth SUCCESS ${outFile}`);
     return {
       file_name: fileName,
       method: "mammoth",
       ok: true,
-      time_ms: 100,
+      time_ms: rtResult.duration,
       outFile: outFile,
     } as Result;
   } catch (error) {
@@ -143,25 +148,25 @@ async function createPdfGotenberg(
   // damit LibreOffice die Dateiendung erkennt!
   form.append("files", docBuffer, { filename: fileName });
   try {
-    const response = await axios.post(gotenbergUrl, form, {
-      headers: {
-        ...form.getHeaders(),
-      },
-      responseType: "arraybuffer",
-    });
+    const rtResult: hlp.RuntimeResult<ax.AxiosResponse> =
+      await hlp.measureRuntime(axios.post, gotenbergUrl, form, {
+        headers: { ...form.getHeaders() },
+        responseType: "arraybuffer",
+      });
+
     const name = path.parse(fileName).name;
     const id = hlp.getId();
     const outputPdfPath = path.join(
       outDir,
       `${name}-${ts}-gotenberg-${id}.pdf`,
     );
-    await writeFile(outputPdfPath, response.data);
+    await writeFile(outputPdfPath, rtResult.result.data);
     console.log(`gotenberg SUCCESS ${outputPdfPath}`);
     return {
       file_name: fileName,
       method: "gotenberg",
       ok: true,
-      time_ms: 100,
+      time_ms: rtResult.duration,
       outFile: outputPdfPath,
     } as Result;
   } catch (error) {
