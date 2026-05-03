@@ -7,6 +7,16 @@ import mammoth from "mammoth";
 import axios from "axios";
 import FormData from "form-data";
 import * as hlp from "./helper";
+import { getHeapSpaceStatistics } from "node:v8";
+
+interface Result {
+  file_name: string;
+  method: string;
+  ok: boolean;
+  message?: string;
+  time_ms?: number;
+  outFile?: string;
+}
 
 const actionWrapper = (fn: (...args: any[]) => Promise<any>) => {
   const handleError = (error: any) => {
@@ -57,10 +67,17 @@ async function processFiles() {
   if (files.length === 0) {
     console.log("The directory is empty.");
   } else {
+    let results: Array<Result> = [];
     for (const file of files) {
-      await processFile(directoryPath, file, outPath, ts);
+      const rs = await processFile(directoryPath, file, outPath, ts);
+      results.push(...rs);
     }
+    printStatistics(results);
   }
+}
+
+function printStatistics(results: Array<Result>) {
+  console.log(JSON.stringify(results, null, 2));
 }
 
 async function processFile(
@@ -68,11 +85,13 @@ async function processFile(
   fileName: string,
   outDir: string,
   ts: string,
-) {
+): Promise<Array<Result>> {
   const file = path.join(dir, fileName);
   const buf = await readFile(file);
-  await createHtmlMammoth(fileName, buf, outDir, ts);
-  await createPdfGotenberg(fileName, buf, outDir, ts);
+  let results: Array<Result> = [];
+  results.push(await createHtmlMammoth(fileName, buf, outDir, ts));
+  results.push(await createPdfGotenberg(fileName, buf, outDir, ts));
+  return results;
 }
 
 async function createHtmlMammoth(
@@ -80,8 +99,7 @@ async function createHtmlMammoth(
   document: Buffer,
   outDir: string,
   ts: string,
-) {
-  let content = "";
+): Promise<Result> {
   let label = "";
   try {
     const mamResult = await mammoth.convertToHtml({ buffer: document });
@@ -93,8 +111,21 @@ async function createHtmlMammoth(
     );
     writeFile(outFile, mamResult.value);
     console.log(`mammoth SUCCESS ${outFile}`);
+    return {
+      file_name: fileName,
+      method: "mammoth",
+      ok: true,
+      time_ms: 100,
+      outFile: outFile,
+    } as Result;
   } catch (error) {
     console.error(`mammoth ERROR ${fileName}'. ${error}`);
+    return {
+      file_name: fileName,
+      method: "mammoth",
+      ok: false,
+      message: `${error}`,
+    } as Result;
   }
 }
 
@@ -103,7 +134,7 @@ async function createPdfGotenberg(
   docBuffer: Buffer,
   outDir: string,
   ts: string,
-) {
+): Promise<Result> {
   const gotenbergUrl = "http://localhost:3000/forms/libreoffice/convert";
 
   const form = new FormData();
@@ -126,6 +157,13 @@ async function createPdfGotenberg(
     );
     await writeFile(outputPdfPath, response.data);
     console.log(`gotenberg SUCCESS ${outputPdfPath}`);
+    return {
+      file_name: fileName,
+      method: "gotenberg",
+      ok: true,
+      time_ms: 100,
+      outFile: outputPdfPath,
+    } as Result;
   } catch (error) {
     let message = "undefined";
     if (error instanceof Error) {
@@ -133,7 +171,12 @@ async function createPdfGotenberg(
     } else {
       message = `${error}`;
     }
-
     console.error(`gotenberg ERROR ${fileName}`, message);
+    return {
+      file_name: fileName,
+      method: "gotenberg",
+      ok: false,
+      message: message,
+    } as Result;
   }
 }
