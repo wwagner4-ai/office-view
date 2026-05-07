@@ -134,9 +134,6 @@ async function createPdfGotenberg(
   const gotenbergUrl = "http://localhost:3000/forms/libreoffice/convert";
 
   const form = new FormData();
-
-  // WICHTIG: Der dritte Parameter { filename: '...' } ist entscheidend,
-  // damit LibreOffice die Dateiendung erkennt!
   form.append("files", docBuffer, { filename: fileName });
   try {
     const rtResult: hlp.RuntimeResult<ax.AxiosResponse> =
