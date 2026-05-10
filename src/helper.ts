@@ -52,3 +52,21 @@ export async function measureRuntime<Args extends any[], Return>(
 
 export const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+export const actionWrapper = (fn: (...args: any[]) => Promise<any>) => {
+  const handleError = (error: any) => {
+    if (error instanceof Error) {
+      console.error(error.stack);
+    } else {
+      console.error("ERROR", error);
+    }
+  };
+
+  return async (...args: any[]) => {
+    try {
+      await fn(...args);
+    } catch (error) {
+      handleError(error);
+    }
+  };
+};

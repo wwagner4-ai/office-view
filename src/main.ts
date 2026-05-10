@@ -10,36 +10,36 @@ import FormData from "form-data";
 import * as hlp from "./helper";
 import * as stat from "./statistics";
 
-const actionWrapper = (fn: (...args: any[]) => Promise<any>) => {
-  const handleError = (error: any) => {
-    if (error instanceof Error) {
-      console.error(error.stack);
-    } else {
-      console.error("ERROR", error);
-    }
-  };
-
-  return async (...args: any[]) => {
-    try {
-      await fn(...args);
-    } catch (error) {
-      handleError(error);
-    }
-  };
-};
-
 const program = new Command();
 
 program
-  .name("vo")
-  .description("CLI for fetching random trivia questions")
+  .name("office-view")
+  .description("CLI for testing howto display office documents.")
   .version("1.0.0");
 
 program
-  .description("Process all files in the test-data directory")
-  .action(actionWrapper(processFiles));
+  .description("Process all files in the test-data directory.")
+  .command("statistics")
+  .action(hlp.actionWrapper(processFiles));
+
+program
+  .description("Convert all files in <directory> into pdfs.")
+  .command("convert")
+  .argument("<directory>", "The path to the input directory")
+  .action(hlp.actionWrapper(convert));
 
 program.parse();
+
+async function convert(directory: string) {
+  if (!fs.existsSync(directory)) {
+    throw Error(`${directory} does not exist.`);
+  }
+  if (!fs.lstatSync(directory).isDirectory()) {
+    throw Error(`${directory} is not a directory.`);
+  }
+  const absDir = path.resolve(directory);
+  console.log(`Start converting files in'${absDir}'`);
+}
 
 async function processFiles() {
   const ts = hlp.getTimestamp();
@@ -53,8 +53,6 @@ async function processFiles() {
     `${ts}-${id}`,
   );
   fs.mkdirSync(outPath, { recursive: true });
-  //console.log(`Create out dir ${outPath}`);
-
   const directoryPath = path.join(process.cwd(), "test-data");
   if (!fs.existsSync(directoryPath)) {
     console.error(`Error: Directory '${directoryPath}' does not exist.`);
@@ -62,7 +60,6 @@ async function processFiles() {
   }
 
   const files = fs.readdirSync(directoryPath);
-
   if (files.length === 0) {
     console.log("The directory is empty.");
   } else {

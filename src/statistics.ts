@@ -66,7 +66,7 @@ export function printStatistics(results: Array<hlp.Result>) {
     max: maxMammoth,
   } = getStats(filterByCriteria(results, [isMammoth, isOk]));
   console.log(
-    `Mammoth   runtime[ms]: mean:${meanMammoth.toFixed(1)} min:${minMammoth.toFixed(1)} mean:${maxMammoth.toFixed(1)}`,
+    `Mammoth   runtime[ms]: mean:${meanMammoth.toFixed(1)} min:${minMammoth.toFixed(1)} max:${maxMammoth.toFixed(1)}`,
   );
 
   let allGotenberg = filterByCriteria(results, [isGotenberg]).length;
