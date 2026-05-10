@@ -1,5 +1,19 @@
-# Typescript CLI App Starter
+## UASGE
 
-Template for quickly creating a new node typescript project for cli usage.
+### Prerequisites:
 
-Check out [Create Typescript CLI App](https://github.com/canseyran/create-ts-cli-app) for more information
+docker, node, npm
+
+### Run
+
+1. Starte the gotenberg container
+
+`docker run -d -ti --rm -p 3000:3000 gotenberg/gotenberg:latest`
+
+3. Install the dependencies
+
+`npm install`
+
+4. Rund the commandline app
+
+`npm run start -- --help`

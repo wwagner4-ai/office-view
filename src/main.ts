@@ -39,6 +39,48 @@ async function convert(directory: string) {
   }
   const absDir = path.resolve(directory);
   console.log(`Start converting files in'${absDir}'`);
+  convertFiles(absDir);
+}
+
+async function convertFiles(inDir: string) {
+  const ts = hlp.getTimestamp();
+  const id = hlp.getId();
+  const outPath = path.join(inDir, "pdfs", `${ts}-${id}`);
+  fs.mkdirSync(outPath, { recursive: true });
+  const files = fs.readdirSync(inDir);
+  if (files.length === 0) {
+    console.log("The directory is empty.");
+  } else {
+    let results: Array<hlp.Result> = [];
+    for (const file of files) {
+      // console.log(`### converting ${inDir} ${file}`)
+      const rs = await convertFile(inDir, file, outPath, ts);
+      results.push(...rs);
+    }
+    console.log(`Converted ${results.length} files from ${inDir}`);
+  }
+}
+
+async function convertFile(
+  dir: string,
+  fileName: string,
+  outDir: string,
+  ts: string,
+): Promise<Array<hlp.Result>> {
+  let results: Array<hlp.Result> = [];
+  const file = path.join(dir, fileName);
+
+  if (fs.lstatSync(file).isFile() && !fileName.startsWith(".")) {
+    const buf = await readFile(file);
+    const result = await createPdfGotenberg(fileName, buf, outDir, ts);
+    if (result.ok) {
+      results.push(result);
+    } else {
+      console.log(`Error converting ${fileName}. ${result.message}`);
+    }
+    await hlp.sleep(10);
+  }
+  return results;
 }
 
 async function processFiles() {
@@ -141,7 +183,7 @@ async function createPdfGotenberg(
 
     const name = path.parse(fileName).name;
     const id = hlp.getId();
-    const outputPdfPath = path.join(outDir, `gotenberg-${name}.pdf`);
+    const outputPdfPath = path.join(outDir, `${name}.pdf`);
     await writeFile(outputPdfPath, rtResult.result.data);
     console.log(`gotenberg SUCCESS ${outputPdfPath}`);
     return {
